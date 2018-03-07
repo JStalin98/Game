@@ -22,11 +22,9 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.GL20;
 import com.pmdm.game.MyGame;
 
+
 /**
- * This screen is executed when you start the screen and it is used to load things in the
- * asset manager. There are a lot of ways for loading things in an AssetManager. This is a
- * simple example that displays a label saying "LOADING" as well as the percentage of the
- * game that has been loaded.
+ * Clase que eh utilizado de auxiliar para cargar el juego , ya que si no me daba errores
  */
 public class LoadingScreen extends BaseScreen {
 
@@ -43,14 +41,9 @@ public class LoadingScreen extends BaseScreen {
         Gdx.gl.glClearColor(0, 0, 0, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
-        // This is important. To load an asset from the asset manager you call update() method.
-        // this method will return true if it has finished loading. Else it will return false.
-        // You usually want to do the code that changes to the main menu screen if it has finished
-        // loading, else you update the screen to not make the user angry and keep loading.
+
         if (game.getManager().update()) {
-            // I'll notify the game that all the assets are loaded so that it can load the
-            // remaining set of screens and enter the main menu. This avoids Exceptions because
-            // screens cannot be loaded until all the assets are loaded.
+
             game.finishLoading();
         }
 

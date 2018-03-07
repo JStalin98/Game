@@ -1,18 +1,17 @@
 package com.pmdm.game.screens;
 
-import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
+import com.badlogic.gdx.InputAdapter;
 import com.badlogic.gdx.InputProcessor;
+import com.badlogic.gdx.audio.Music;
+import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.Animation;
-import com.badlogic.gdx.graphics.g2d.Sprite;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
-import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.maps.tiled.TiledMap;
-import com.badlogic.gdx.maps.tiled.TiledMapRenderer;
 import com.badlogic.gdx.maps.tiled.TiledMapTileLayer;
 import com.badlogic.gdx.maps.tiled.TmxMapLoader;
 import com.badlogic.gdx.maps.tiled.renderers.OrthogonalTiledMapRenderer;
@@ -20,14 +19,16 @@ import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.scenes.scene2d.Stage;
-import com.pmdm.game.Joystick;
 import com.pmdm.game.MyGame;
-import com.pmdm.game.screens.BaseScreen;
 
-import javax.swing.JButton;
-import javax.xml.soap.Text;
+/**
+ * Clase en la que se ejecuta el juego
+ */
+public class GameScreen extends BaseScreen implements InputProcessor{
 
-public class GameScreen extends BaseScreen implements InputProcessor {
+
+    private int jugadorInicialX;
+    private int jugadorInicialY;
 
     //Objeto que recoge el mapa de baldosas
     private TiledMap mapa;
@@ -65,6 +66,8 @@ public class GameScreen extends BaseScreen implements InputProcessor {
     int anchoCelda, altoCelda;
 
 
+    private TiledMapTileLayer capaProfundidad;
+    private boolean[][] profundiad;
     private boolean[][] obstaculo;
     TiledMapTileLayer capaObstaculos;
     private boolean[][] carretera;
@@ -100,14 +103,18 @@ public class GameScreen extends BaseScreen implements InputProcessor {
     private float stateTimeNPC;
 
 
+    private int velocidadJugador = 5;
+
+
+    private Music musica;
+
+    private Sound conduciendo;
+    private Sound choque;
+
 
     public GameScreen(final MyGame game) {
-
         super(game);
 
-        //Ponemos el tamaño del mapa de baldosas
-        float anchura = 2000;
-        float altura = 2000;
 //Creamos una cámara y la vinculamos con el lienzo del juego.
 //En este caso le damos unos valores de tamaño que haga que el juego
 //se muestre de forma idéntica en todas las plataformas.
@@ -115,18 +122,17 @@ public class GameScreen extends BaseScreen implements InputProcessor {
 //Posicionamos la vista de la cámara para que su vértice inferior izquierdo sea
         //  (0,0)
         camara.position.set(camara.viewportWidth / 2f, camara.viewportHeight / 2f, 0);
-//Vinculamos los eventos de entrada a esta clase.
-        Gdx.input.setInputProcessor(this);
+
         camara.update();
 // Cargamos la imagen de los frames del mosquetero en el objeto img de la clase
         //Texture.
-        img = new Texture(Gdx.files.internal("mosquetero.png"));
+        //img = new Texture(Gdx.files.internal("/tiles/mosquetero.png"));
 // Sacamos los frames de img en un array de TextureRegion.
         Texture[] tmp = new Texture[4];
-        tmp[0] = new Texture(Gdx.files.internal("car_arriba.png"));
-        tmp[1] = new Texture(Gdx.files.internal("car_derecha.png"));
-        tmp[2] = new Texture(Gdx.files.internal("car_abajo.png"));
-        tmp[3] = new Texture(Gdx.files.internal("car_izquierda.png"));
+        tmp[0] = new Texture(Gdx.files.internal("tiles/car_arriba.png"));
+        tmp[1] = new Texture(Gdx.files.internal("tiles/car_derecha.png"));
+        tmp[2] = new Texture(Gdx.files.internal("tiles/car_abajo.png"));
+        tmp[3] = new Texture(Gdx.files.internal("tiles/car_izquierda.png"));
 
 // Creamos las distintas animaciones, teniendo en cuenta que el tiempo de muestra
         //de cada frame
@@ -140,8 +146,13 @@ public class GameScreen extends BaseScreen implements InputProcessor {
         //defecto.
         jugador = jugadorDerecha;
 // Posición inicial del jugador.
-        jugadorX = 1050;
-        jugadorY = 1750;
+        jugadorInicialX = 900;
+        jugadorInicialY = 1500;
+
+       jugadorX = jugadorInicialX;
+       jugadorY = jugadorInicialY;
+
+
 // Ponemos a cero el atributo stateTime, que marca el tiempo e ejecución de la
         // animación.
         stateTime = 0f;
@@ -150,7 +161,7 @@ public class GameScreen extends BaseScreen implements InputProcessor {
 // en el método render()
         sb = new SpriteBatch();
 // Cargamos el mapa de baldosas desde la carpeta de assets
-        mapa = new TmxMapLoader().load("nuevoMapa.tmx");
+        mapa = new TmxMapLoader().load("tiles/nuevoMapa.tmx");
         mapaRenderer = new OrthogonalTiledMapRenderer(mapa);
 
 
@@ -170,6 +181,7 @@ public class GameScreen extends BaseScreen implements InputProcessor {
 
 
         //Cargamos la capa de los obstáculos, que es la tercera en el TiledMap.
+        capaProfundidad = (TiledMapTileLayer) mapa.getLayers().get(3);
         capaObstaculos = (TiledMapTileLayer) mapa.getLayers().get(2);
         capaCarretera = (TiledMapTileLayer)mapa.getLayers().get(1);
 //Cargamos la matriz de los obstáculos del mapa de baldosas.
@@ -177,14 +189,35 @@ public class GameScreen extends BaseScreen implements InputProcessor {
 
         obstaculo = new boolean[altoCapa][anchoCapa];
 
-        System.out.println(altoCapa);
-        System.out.println(anchoCapa);
+
         for (int x = 0; x < anchoCapa; x++) {
             for (int y = 0; y < 20; y++) {
                 obstaculo[x][y] = (capaObstaculos.getCell(x, y) != null);
             }
         }
 
+
+        anchoCapa = capaCarretera.getWidth();
+        altoCapa = capaCarretera.getHeight();
+
+        carretera = new boolean[altoCapa][anchoCapa];
+
+        for (int x = 0; x < anchoCapa; x++) {
+            for (int y = 0; y < 20; y++) {
+                carretera[x][y] = (capaCarretera.getCell(x, y) != null);
+            }
+        }
+
+        anchoCapa = capaProfundidad.getWidth();
+        altoCapa = capaProfundidad.getHeight();
+
+        profundiad = new boolean[altoCapa][anchoCapa];
+
+        for (int x = 0; x < anchoCapa; x++) {
+            for (int y = 0; y < 20; y++) {
+                profundiad[x][y] = (capaProfundidad.getCell(x, y) != null);
+            }
+        }
 
         //Cargamos en los atributos del ancho y alto del sprite sus valores
         cuadroActual = (Texture) jugador.getKeyFrame(stateTime);
@@ -201,13 +234,13 @@ public class GameScreen extends BaseScreen implements InputProcessor {
         //Creamos las animaciones posicionales de los NPC
         //Cargamos la imagen de los frames del monstruo en el objeto img de la clase
         //Texture
-        img = new Texture(Gdx.files.internal("magorojo.png"));
+        img = new Texture(Gdx.files.internal("tiles/magorojo.png"));
         //Sacamos los frames de img en un array de TextureRegion.
         Texture[] tmp2 = new Texture[4];
-        tmp2[0] = new Texture(Gdx.files.internal("jugador_arriba.png"));
-        tmp2[1] = new Texture(Gdx.files.internal("jugador_derecha.png"));
-        tmp2[2] = new Texture(Gdx.files.internal("jugador_abajo.png"));
-        tmp2[3] = new Texture(Gdx.files.internal("jugador_izquierda.png"));
+        tmp2[0] = new Texture(Gdx.files.internal("tiles/jugador_arriba.png"));
+        tmp2[1] = new Texture(Gdx.files.internal("tiles/jugador_derecha.png"));
+        tmp2[2] = new Texture(Gdx.files.internal("tiles/jugador_abajo.png"));
+        tmp2[3] = new Texture(Gdx.files.internal("tiles/jugador_izquierda.png"));
         // Creamos las distintas animaciones, teniendo en cuenta que el tiempo de muestra
         //de cada frame
         //        // será de 150 milisegundos.
@@ -257,6 +290,14 @@ public class GameScreen extends BaseScreen implements InputProcessor {
         // de los NPC.
         stateTimeNPC = 0f;
 
+        //Inicializamos la música de fondo del juego y la reproducimos.
+        musica = Gdx.audio.newMusic(Gdx.files.internal("sound/Deuces.mp3"));
+        musica.setLooping(true);
+
+        conduciendo = Gdx.audio.newSound(Gdx.files.internal("sound/driving.ogg"));
+
+        choque= Gdx.audio.newSound(Gdx.files.internal("sound/shock.wav"));
+
 
 
     }
@@ -265,17 +306,19 @@ public class GameScreen extends BaseScreen implements InputProcessor {
 
     @Override
     public void show() {
-        Gdx.input.setInputProcessor(this);
 
+        musica.play();
     }
 
     @Override
     public void hide() {
-        Gdx.input.setInputProcessor(null);
+        musica.stop();
+
     }
 
     @Override
     public void render(float delta) {
+
         //Ponemos el color del fondo a negro
         Gdx.gl.glClearColor(0, 0, 0, 1);
 //Borramos la pantalla
@@ -304,8 +347,11 @@ public class GameScreen extends BaseScreen implements InputProcessor {
         camara.update();
 //Vinculamos el objeto de dibuja el TiledMap con la cámara del juego
         mapaRenderer.setView(camara);
+
+        int[] capas = {0,1,2};
+
 //Dibujamos el TiledMap
-        mapaRenderer.render();
+        mapaRenderer.render(capas);
 // extraemos el tiempo de la última actualización del sprite y la acumulamos a
         //stateTime.
         stateTime += Gdx.graphics.getDeltaTime();
@@ -328,8 +374,109 @@ public class GameScreen extends BaseScreen implements InputProcessor {
             sb.draw(cuadroActual2,noJugadorX[i],noJugadorY[i]);
         }
 
+        moverJugador();
+
         detectaColisiones​();
+
         sb.end();
+
+        capas = new int[1];
+        capas[0] = 3;
+        mapaRenderer.render(capas);
+
+
+
+    }
+
+
+
+    @Override
+    public void dispose() {
+
+        mapa.dispose();
+        mapaRenderer.dispose();
+        musica.dispose();
+        conduciendo.dispose();
+       choque.dispose();
+
+
+
+    }
+
+    private void moverJugador(){
+
+
+
+        float jugadorAnteriorX = jugadorX;
+        float jugadorAnteriorY = jugadorY;
+
+        if(Gdx.input.isKeyPressed(Input.Keys.UP)){
+            jugadorY += velocidadJugador;
+            jugador = jugadorArriba;
+
+            conduciendo.play();
+
+        }
+
+        if(Gdx.input.isKeyPressed(Input.Keys.DOWN)){
+            jugadorY -= velocidadJugador;
+            jugador = jugadorAbajo;
+            conduciendo.play();
+
+        }
+
+        if(Gdx.input.isKeyPressed(Input.Keys.RIGHT)){
+            jugadorX += velocidadJugador;
+            jugador = jugadorDerecha;
+            conduciendo.play();
+
+        }
+
+        if(Gdx.input.isKeyPressed(Input.Keys.LEFT)){
+            jugadorX -= velocidadJugador;
+            jugador = jugadorIzquierda;
+            conduciendo.play();
+
+        }
+
+
+
+
+        if ((jugadorX < 0 || jugadorY < 0 ||
+                jugadorX > (anchoMapa - anchoJugador) ||
+                jugadorY > (altoMapa - altoJugador)) ||
+                ((obstaculo[(int) ((jugadorX + anchoJugador / 4) / anchoCelda)][((int)
+                        (jugadorY) / altoCelda)]) ||
+                        (obstaculo[(int) ((jugadorX + 3 * anchoJugador / 4) /
+                                anchoCelda)][((int) (jugadorY) / altoCelda)]))) {
+            jugadorX = jugadorAnteriorX;
+        }
+
+        if ((obstaculo[(int) ((jugadorX + anchoJugador/4) / anchoCelda)][((int) (jugadorY) /
+                altoCelda)])
+                || (obstaculo[(int) ((jugadorX + 3*anchoJugador/4) / anchoCelda)][((int)
+                (jugadorY) / altoCelda)])) {
+            jugadorX = jugadorAnteriorX;
+            jugadorY = jugadorAnteriorY;
+        }
+
+        if ((carretera[(int) ((jugadorX + anchoJugador/4) / anchoCelda)][((int) (jugadorY) /
+                altoCelda)])
+                || (carretera[(int) ((jugadorX + 3*anchoJugador/4) / anchoCelda)][((int)
+                (jugadorY) / altoCelda)])) {
+            velocidadJugador = 5;
+        }else {
+            velocidadJugador = 1;
+        }
+
+        if ((profundiad[(int) ((jugadorX + anchoJugador/4) / anchoCelda)][((int) (jugadorY) /
+                altoCelda)])
+                || (profundiad[(int) ((jugadorX + 3*anchoJugador/4) / anchoCelda)][((int)
+                (jugadorY) / altoCelda)])) {
+            jugadorX = jugadorAnteriorX;
+            jugadorY = jugadorAnteriorY;
+        }
+
     }
 
     private void detectaColisiones​() {
@@ -354,6 +501,10 @@ public class GameScreen extends BaseScreen implements InputProcessor {
                 //hace
                 //es mostrar un mensaje en la consola de texto.
                 System.out.println("Hay colisión!!!");
+                choque.play();
+                jugadorX = jugadorInicialX;
+                jugadorY = jugadorInicialY;
+                jugador = jugadorDerecha;
                 game.setScreen(game.gameOverScreen);
             }
         }
@@ -383,66 +534,12 @@ public class GameScreen extends BaseScreen implements InputProcessor {
 
 
     @Override
-    public void dispose() {
-        // batch.dispose();
-        //      img.dispose();
-    }
-
-    // public class MyInputProcessor implements InputProcessor {
     public boolean keyDown(int keycode) {
         return false;
     }
 
-
-    public boolean keyUp (int keycode) {
-
-
-//Si pulsamos uno de los cursores, se desplaza el sprite
-//de forma adecuada un pixel, y se pone a cero el
-//atributo que marca el tiempo de ejecución de la animación,
-//provocando que la misma se reinicie.
-// Guardamos la posición anterior del jugador por si al desplazarlo se topa
-// con un obstáculo y podamos volverlo a la posición anterior.
-        float jugadorAnteriorX = jugadorX;
-        float jugadorAnteriorY = jugadorY;
-        stateTime = 0;
-        if (keycode == Input.Keys.LEFT) {
-            jugadorX += -5;
-            jugador = jugadorIzquierda;
-        }
-        if (keycode == Input.Keys.RIGHT) {
-            jugadorX += 5;
-            jugador = jugadorDerecha;
-        }
-        if (keycode == Input.Keys.UP) {
-            
-            jugadorY += 5;
-            jugador = jugadorArriba;
-        }
-        if (keycode == Input.Keys.DOWN) {
-            jugadorY += -5;
-            jugador = jugadorAbajo;
-        }
-//Si pulsamos la tecla del número 1, se alterna la visibilidad de la primera capa
-//del mapa de baldosas.
-        if (keycode == Input.Keys.NUM_1)
-            mapa.getLayers().get(0).setVisible(!mapa.getLayers().get(0).isVisible());
-//Si pulsamos la tecla del número 2, se alterna la visibilidad de la segunda capa
-//del mapa de baldosas.
-        if (keycode == Input.Keys.NUM_2)
-            mapa.getLayers().get(1).setVisible(!mapa.getLayers().get(1).isVisible());
-// al chocar con un obstáculo el jugador vuelve a su posición inicial
-// la parte izquierda de X es "X + 1/4 del ancho del jugador"
-// la parte derecha de X es "X + 3/4 del ancho del jugador"
-        if ((obstaculo[(int) ((jugadorX + anchoJugador/4) / anchoCelda)][((int) (jugadorY) /
-                altoCelda)])
-                || (obstaculo[(int) ((jugadorX + 3*anchoJugador/4) / anchoCelda)][((int)
-                (jugadorY) / altoCelda)])) {
-            jugadorX = jugadorAnteriorX;
-            jugadorY = jugadorAnteriorY;
-        }
-
-
+    @Override
+    public boolean keyUp(int keycode) {
         return false;
     }
 
@@ -451,87 +548,114 @@ public class GameScreen extends BaseScreen implements InputProcessor {
         return false;
     }
 
-
-    public boolean touchDown (int screenX, int screenY, int pointer, int button) {
-
-
-
-// Vector en tres dimensiones que recoge las coordenadas donde se ha hecho click
-// o toque de la pantalla.
+    @Override
+    public boolean touchDown(int screenX, int screenY, int pointer, int button) {
+        // Vector en tres dimensiones que recoge las coordenadas donde se ha hecho click
+        // o toque de la pantalla.
         Vector3 clickCoordinates = new Vector3(screenX, screenY, 0);
-// Transformamos las coordenadas del vector a coordenadas de nuestra cámara.
+        // Transformamos las coordenadas del vector a coordenadas de nuestra cámara.
         Vector3 posicion = camara.unproject(clickCoordinates);
-//Se pone a cero el atributo que marca el tiempo de ejecución de la animación,
-//provocando que la misma se reinicie.
+        //Se pone a cero el atributo que marca el tiempo de ejecución de la animación,
+        //provocando que la misma se reinicie.
         stateTime = 0;
-// Guardamos la posición anterior del jugador por si al desplazarlo se topa
-// con un obstáculo y podamos volverlo a la posición anterior.
+        //Guardamos la posición anterior del jugador por si al desplazarlo se topa
+        //con un obstáculo y podamos volverlo a la posición anterior.
         float jugadorAnteriorX = jugadorX;
         float jugadorAnteriorY = jugadorY;
-//Si se ha pulsado por encima de la animación, se sube esta 5 píxeles y se reproduce
-        //la
-//animación del jugador desplazándose hacia arriba.
+        //Si se ha pulsado por encima de la animación, se sube esta 5 píxeles y se reproduce
+       // la
+        //animación del jugador desplazándose hacia arriba.
         if ((jugadorY + altoJugador) < posicion.y) {
             jugadorY += 5;
             jugador = jugadorArriba;
-//Si se ha pulsado por debajo de la animación, se baja esta 5 píxeles y se
-            // reproduce
-//la animación del jugador desplazándose hacia abajo.
+            conduciendo.play();
+            //Si se ha pulsado por debajo de la animación, se baja esta 5 píxeles y se
+           // reproduce
+            //la animación del jugador desplazándose hacia abajo.
         } else if ((jugadorY) > posicion.y) {
             jugadorY -= 5;
             jugador = jugadorAbajo;
+            conduciendo.play();
         }
-//Si se ha pulsado más de la mitad del ancho del sprite a la derecha de la
+        //Si se ha pulsado más de la mitad del ancho del sprite a la derecha de la
         //animación, se
-//mueve esta 5 píxeles a la derecha se reproduce la animación del jugador
-        //desplazándose
-// hacia la derecha.
+        //mueve esta 5 píxeles a la derecha se reproduce la animación del jugador
+       // desplazándose
+        // hacia la derecha.
         if ((jugadorX + anchoJugador/2) < posicion.x) {
             jugadorX += 5;
             jugador = jugadorDerecha;
-//Si se ha pulsado mas de la mitad del ancho del sprite a la izquierda de la
-            // animación,
-// se mueve esta 5 píxeles a la izquierda y se reproduce la animación del
-            // jugador
-// desplazándose hacia la izquierda.
+            conduciendo.play();
+            //Si se ha pulsado mas de la mitad del ancho del sprite a la izquierda de la
+          //  animación,
+                    // se mueve esta 5 píxeles a la izquierda y se reproduce la animación del
+                   // jugador
+            // desplazándose hacia la izquierda.
         } else if ((jugadorX - anchoJugador/2) > posicion.x) {
             jugadorX -= 5;
             jugador = jugadorIzquierda;
+            conduciendo.play();
         }
-// al chocar con un obstáculo el jugador vuelve a su posición inicial
-        if ((obstaculo[(int) ((jugadorX + anchoJugador/4) / anchoCelda)][((int) (jugadorY)
-                / altoCelda)])
+
+
+        if ((jugadorX < 0 || jugadorY < 0 ||
+                jugadorX > (anchoMapa - anchoJugador) ||
+                jugadorY > (altoMapa - altoJugador)) ||
+                ((obstaculo[(int) ((jugadorX + anchoJugador / 4) / anchoCelda)][((int)
+                        (jugadorY) / altoCelda)]) ||
+                        (obstaculo[(int) ((jugadorX + 3 * anchoJugador / 4) /
+                                anchoCelda)][((int) (jugadorY) / altoCelda)]))) {
+            jugadorX = jugadorAnteriorX;
+        }
+
+        if ((obstaculo[(int) ((jugadorX + anchoJugador/4) / anchoCelda)][((int) (jugadorY) /
+                altoCelda)])
                 || (obstaculo[(int) ((jugadorX + 3*anchoJugador/4) / anchoCelda)][((int)
                 (jugadorY) / altoCelda)])) {
             jugadorX = jugadorAnteriorX;
             jugadorY = jugadorAnteriorY;
-
-
         }
 
+        if ((carretera[(int) ((jugadorX + anchoJugador/4) / anchoCelda)][((int) (jugadorY) /
+                altoCelda)])
+                || (carretera[(int) ((jugadorX + 3*anchoJugador/4) / anchoCelda)][((int)
+                (jugadorY) / altoCelda)])) {
+            velocidadJugador = 5;
+        }else {
+            velocidadJugador = 1;
+        }
+
+        if ((profundiad[(int) ((jugadorX + anchoJugador/4) / anchoCelda)][((int) (jugadorY) /
+                altoCelda)])
+                || (profundiad[(int) ((jugadorX + 3*anchoJugador/4) / anchoCelda)][((int)
+                (jugadorY) / altoCelda)])) {
+            jugadorX = jugadorAnteriorX;
+            jugadorY = jugadorAnteriorY;
+        }
+
+        return  true;
 
 
-        return true;
     }
 
-    public boolean touchUp(int x, int y, int pointer, int button) {
+    @Override
+    public boolean touchUp(int screenX, int screenY, int pointer, int button) {
         return false;
     }
 
-    public boolean touchDragged(int x, int y, int pointer) {
+    @Override
+    public boolean touchDragged(int screenX, int screenY, int pointer) {
         return false;
     }
 
-    public boolean mouseMoved(int x, int y) {
+    @Override
+    public boolean mouseMoved(int screenX, int screenY) {
         return false;
     }
 
+    @Override
     public boolean scrolled(int amount) {
         return false;
     }
-
-
-    //  }
-
 }
 
